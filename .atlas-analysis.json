@@ -1,0 +1,67 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Sentry Go SDK",
+  "projectDescription": "A Go client library that wraps the official Sentry SDK with additional functionality and helper methods for error reporting.",
+  "theme": "palm",
+  "primaryColor": "#ffffff",
+  "lightColor": "#74d7ed",
+  "darkColor": "#38484e",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/error-reporting",
+              "guides/panic-recovery",
+              "guides/context-management",
+              "guides/http-integration",
+              "guides/breadcrumbs-tags"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/client",
+              "api/context-helpers",
+              "api/constants"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Enhanced error reporting with context support",
+    "Automatic panic detection and recovery",
+    "HTTP request integration",
+    "Breadcrumb logging and tagging",
+    "Nil-safe client operations"
+  ],
+  "publicApiSurface": [
+    "NewClient(dsn string) *Client",
+    "Client.Report(ctx context.Context, err error)",
+    "Client.ReportPanic(ctx context.Context, panicErr interface{})",
+    "Client.ReportPanics(ctx context.Context)",
+    "Client.Flush(timeout time.Duration)",
+    "WithContext(ctx context.Context) context.Context",
+    "WithRequest(r *http.Request) *http.Request",
+    "LogBreadcrumb(ctx context.Context, level, category, message string)",
+    "Tag(ctx context.Context, key, value string)"
+  ]
+}
