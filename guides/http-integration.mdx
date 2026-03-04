@@ -1,0 +1,377 @@
+---
+title: HTTP integration
+description: Learn how to integrate Sentry with HTTP handlers and middleware for request tracking
+---
+
+The Sentry Go SDK provides seamless HTTP integration that automatically captures request details when errors occur. This guide shows you how to implement HTTP middleware and track requests effectively.
+
+## Using WithRequest
+
+The `WithRequest()` function creates a Sentry-aware context and automatically attaches HTTP request details:
+
+```go
+package main
+
+import (
+	"net/http"
+	"time"
+	
+	"github.com/altipla-consulting/sentry"
+)
+
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Attach request to Sentry context
+		r = sentry.WithRequest(r)
+		defer client.ReportPanics(r.Context())
+		
+		// Handle request
+		if err := processRequest(r.Context()); err != nil {
+			client.Report(r.Context(), err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	
+	http.HandleFunc("/", handler(client))
+	http.ListenAndServe(":8080", nil)
+}
+```
+
+<Note>
+`WithRequest()` internally calls `WithContext()` and then attaches the request using `scope.SetRequest()`. This means the request is always included in error reports.
+</Note>
+
+## Request information captured
+
+When you use `WithRequest()`, Sentry automatically captures:
+
+- HTTP method (GET, POST, etc.)
+- Request URL and query parameters
+- Request headers
+- User IP address (when `SendDefaultPII` is enabled)
+- Request body (for POST/PUT requests)
+- Cookies
+
+All of this information helps you debug issues by providing full request context.
+
+## Middleware pattern
+
+Create reusable middleware to wrap all your handlers:
+
+```go
+func sentryMiddleware(client *sentry.Client, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Attach Sentry to request
+		r = sentry.WithRequest(r)
+		defer client.ReportPanics(r.Context())
+		
+		// Call the next handler
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Usage
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	
+	mux := http.NewServeMux()
+	mux.HandleFunc("/users", handleUsers)
+	mux.HandleFunc("/posts", handlePosts)
+	
+	// Wrap all handlers with Sentry middleware
+	http.ListenAndServe(":8080", sentryMiddleware(client, mux))
+}
+```
+
+This pattern ensures all requests have Sentry context without duplicating code in every handler.
+
+## Request tracking with breadcrumbs
+
+Combine `WithRequest()` with breadcrumbs to track the request lifecycle:
+
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r = sentry.WithRequest(r)
+		defer client.ReportPanics(r.Context())
+		ctx := r.Context()
+		
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "request", "Request received")
+		
+		// Authentication
+		user, err := authenticate(ctx, r)
+		if err != nil {
+			sentry.LogBreadcrumb(ctx, sentry.LevelError, "auth", "Authentication failed")
+			client.Report(ctx, err)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "User authenticated")
+		sentry.Tag(ctx, "user_id", user.ID)
+		
+		// Process request
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "business", "Processing user request")
+		if err := processUserRequest(ctx, user); err != nil {
+			sentry.LogBreadcrumb(ctx, sentry.LevelError, "business", "Request processing failed")
+			client.Report(ctx, err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "response", "Request completed successfully")
+		w.WriteHeader(http.StatusOK)
+	}
+}
+```
+
+These breadcrumbs create a timeline of the request, making it easy to understand what happened before an error.
+
+## Tagging requests
+
+Add custom tags to categorize and filter errors:
+
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r = sentry.WithRequest(r)
+		ctx := r.Context()
+		
+		// Add custom tags
+		sentry.Tag(ctx, "endpoint", r.URL.Path)
+		sentry.Tag(ctx, "method", r.Method)
+		sentry.Tag(ctx, "api_version", r.Header.Get("X-API-Version"))
+		
+		if userID := getUserFromSession(r); userID != "" {
+			sentry.Tag(ctx, "user_id", userID)
+		}
+		
+		processRequest(ctx, client)
+	}
+}
+```
+
+Tags appear in your Sentry dashboard and can be used to filter and search for specific errors.
+
+## Panic recovery in HTTP handlers
+
+<Warning>
+Always recover from panics in HTTP handlers to prevent your entire server from crashing.
+</Warning>
+
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r = sentry.WithRequest(r)
+		defer client.ReportPanics(r.Context())
+		
+		// This panic will be caught and reported with full request context
+		if r.URL.Path == "/panic" {
+			panic("unexpected error")
+		}
+		
+		w.WriteHeader(http.StatusOK)
+	}
+}
+```
+
+The panic report includes all HTTP request details, making it easy to reproduce the issue.
+
+## Multiple middleware integration
+
+Sentry middleware works well with other middleware:
+
+```go
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isAuthenticated(r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", handleRoot)
+	
+	// Stack middleware in order
+	handler := loggingMiddleware(authMiddleware(sentryMiddleware(client, mux)))
+	http.ListenAndServe(":8080", handler)
+}
+```
+
+<Info>
+Place Sentry middleware as close to your handlers as possible to ensure it catches errors from all other middleware.
+</Info>
+
+## Router integration examples
+
+<Tabs>
+  <Tab title="Standard library">
+```go
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	
+	mux := http.NewServeMux()
+	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+		r = sentry.WithRequest(r)
+		defer client.ReportPanics(r.Context())
+		
+		handleUsers(w, r)
+	})
+	
+	http.ListenAndServe(":8080", mux)
+}
+```
+  </Tab>
+  
+  <Tab title="gorilla/mux">
+```go
+import "github.com/gorilla/mux"
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	
+	r := mux.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r = sentry.WithRequest(r)
+			defer client.ReportPanics(r.Context())
+			next.ServeHTTP(w, r)
+		})
+	})
+	
+	r.HandleFunc("/users/{id}", handleUser).Methods("GET")
+	http.ListenAndServe(":8080", r)
+}
+```
+  </Tab>
+  
+  <Tab title="chi">
+```go
+import "github.com/go-chi/chi/v5"
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r = sentry.WithRequest(r)
+			defer client.ReportPanics(r.Context())
+			next.ServeHTTP(w, r)
+		})
+	})
+	
+	r.Get("/users/{userID}", handleUser)
+	http.ListenAndServe(":8080", r)
+}
+```
+  </Tab>
+</Tabs>
+
+## Error responses
+
+When reporting errors, always send appropriate HTTP status codes:
+
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r = sentry.WithRequest(r)
+		ctx := r.Context()
+		
+		data, err := fetchData(ctx)
+		if err != nil {
+			// Report to Sentry
+			client.Report(ctx, err)
+			
+			// Respond to client
+			if errors.Is(err, ErrNotFound) {
+				http.Error(w, "Not found", http.StatusNotFound)
+			} else {
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
+			return
+		}
+		
+		json.NewEncoder(w).Encode(data)
+	}
+}
+```
+
+This pattern ensures both Sentry and your users get appropriate error information.
+
+## Deprecated request methods
+
+<Warning>
+The `ReportRequest()` and `ReportPanicsRequest()` methods are deprecated. Use `WithRequest()` followed by `Report()` or `ReportPanics()` instead.
+</Warning>
+
+Old pattern (deprecated):
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer client.ReportPanicsRequest(r)
+		
+		if err := process(); err != nil {
+			client.ReportRequest(r, err)
+		}
+	}
+}
+```
+
+New pattern (recommended):
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r = sentry.WithRequest(r)
+		defer client.ReportPanics(r.Context())
+		
+		if err := process(); err != nil {
+			client.Report(r.Context(), err)
+		}
+	}
+}
+```
+
+The new pattern is more consistent with other SDK features and allows better context enrichment.
+
+## Performance considerations
+
+<Info>
+Error reporting is asynchronous and won't block your HTTP handlers. Events are sent in background goroutines.
+</Info>
+
+From the source code (client.go:116), error reporting uses goroutines:
+
+```go
+go func() {
+	defer client.wg.Done()
+	// Send event to Sentry
+}()
+```
+
+This means your handlers remain fast even when reporting errors.

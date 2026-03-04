@@ -1,0 +1,276 @@
+---
+title: "Client"
+description: "Core client type for reporting errors and panics to Sentry"
+---
+
+The `Client` type wraps a Sentry connection and provides methods for reporting errors and panics to Sentry. A nil client can be used safely but won't report anything.
+
+## NewClient
+
+Creates a new Sentry client connection.
+
+### Signature
+
+```go
+func NewClient(dsn string) *Client
+```
+
+### Parameters
+
+<ParamField path="dsn" type="string" required>
+  The Sentry DSN (Data Source Name) connection string. If empty, returns nil.
+</ParamField>
+
+### Returns
+
+Returns a `*Client` instance or `nil` if the DSN is empty. Panics if the DSN is invalid.
+
+### Example
+
+```go
+import "github.com/altipla-consulting/sentry"
+
+client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+if client != nil {
+    defer client.Flush(5 * time.Second)
+}
+```
+
+<Note>
+  The client automatically sets the release version from the `VERSION` environment variable and enables sending personally identifiable information (PII).
+</Note>
+
+---
+
+## Report
+
+Reports an error to Sentry with full context from the provided context.
+
+### Signature
+
+```go
+func (client *Client) Report(ctx context.Context, appErr error)
+```
+
+### Parameters
+
+<ParamField path="ctx" type="context.Context" required>
+  The context containing Sentry scope information (breadcrumbs, tags, request data). Use `WithContext()` or `WithRequest()` to prepare the context.
+</ParamField>
+
+<ParamField path="appErr" type="error" required>
+  The error to report to Sentry. The error chain will be unwrapped to find the root cause.
+</ParamField>
+
+### Returns
+
+No return value. The error is sent asynchronously to Sentry.
+
+### Example
+
+```go
+ctx := sentry.WithContext(context.Background())
+sentry.Tag(ctx, "user_id", "12345")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "User logged in")
+
+err := someOperation()
+if err != nil {
+    client.Report(ctx, err)
+}
+```
+
+<Note>
+  Errors are sent asynchronously. Use `Flush()` to ensure all events are sent before the application exits.
+</Note>
+
+---
+
+## ReportPanic
+
+Sends a panic to Sentry if the provided panic value is not nil.
+
+### Signature
+
+```go
+func (client *Client) ReportPanic(ctx context.Context, panicErr interface{})
+```
+
+### Parameters
+
+<ParamField path="ctx" type="context.Context" required>
+  The context containing Sentry scope information.
+</ParamField>
+
+<ParamField path="panicErr" type="interface{}" required>
+  The panic value from `recover()`. If nil, no report is sent.
+</ParamField>
+
+### Returns
+
+No return value. The panic is sent asynchronously to Sentry with a full stack trace.
+
+### Example
+
+```go
+func dangerousOperation() {
+    ctx := sentry.WithContext(context.Background())
+    defer client.ReportPanic(ctx, recover())
+    
+    // Code that might panic
+    panic("something went wrong")
+}
+```
+
+---
+
+## ReportPanics
+
+Detects and reports panics in the rest of the function body. This is a convenience wrapper around `ReportPanic(ctx, recover())`.
+
+### Signature
+
+```go
+func (client *Client) ReportPanics(ctx context.Context)
+```
+
+### Parameters
+
+<ParamField path="ctx" type="context.Context" required>
+  The context containing Sentry scope information.
+</ParamField>
+
+### Returns
+
+No return value. If a panic occurs, it's sent to Sentry with level `LevelFatal`.
+
+### Example
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    ctx := sentry.WithContext(r.Context())
+    defer client.ReportPanics(ctx)
+    
+    // Your handler code that might panic
+    panic("unexpected error")
+}
+```
+
+<Note>
+  Use `defer` with this function to ensure panics are caught and reported.
+</Note>
+
+---
+
+## ReportRequest
+
+<Warning>
+  **Deprecated:** Use `Report()` after a previous `WithRequest()` call instead.
+</Warning>
+
+Reports an error with HTTP request context.
+
+### Signature
+
+```go
+func (client *Client) ReportRequest(r *http.Request, appErr error)
+```
+
+### Parameters
+
+<ParamField path="r" type="*http.Request" required>
+  The HTTP request containing context.
+</ParamField>
+
+<ParamField path="appErr" type="error" required>
+  The error to report.
+</ParamField>
+
+### Migration Example
+
+```go
+// Old (deprecated)
+client.ReportRequest(r, err)
+
+// New (recommended)
+r = sentry.WithRequest(r)
+client.Report(r.Context(), err)
+```
+
+---
+
+## ReportPanicsRequest
+
+<Warning>
+  **Deprecated:** Use `ReportPanics()` after a previous `WithRequest()` call instead.
+</Warning>
+
+Detects and reports panics with HTTP request context.
+
+### Signature
+
+```go
+func (client *Client) ReportPanicsRequest(r *http.Request)
+```
+
+### Parameters
+
+<ParamField path="r" type="*http.Request" required>
+  The HTTP request containing context.
+</ParamField>
+
+### Migration Example
+
+```go
+// Old (deprecated)
+func handler(w http.ResponseWriter, r *http.Request) {
+    defer client.ReportPanicsRequest(r)
+    // handler code
+}
+
+// New (recommended)
+func handler(w http.ResponseWriter, r *http.Request) {
+    r = sentry.WithRequest(r)
+    defer client.ReportPanics(r.Context())
+    // handler code
+}
+```
+
+---
+
+## Flush
+
+Waits until the underlying transport sends any buffered events to Sentry.
+
+### Signature
+
+```go
+func (client *Client) Flush(timeout time.Duration)
+```
+
+### Parameters
+
+<ParamField path="timeout" type="time.Duration" required>
+  Maximum time to wait for events to be sent. The function returns after this duration even if events are still pending.
+</ParamField>
+
+### Returns
+
+No return value. Blocks until all events are sent or timeout is reached.
+
+### Example
+
+```go
+func main() {
+    client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+    if client != nil {
+        defer client.Flush(5 * time.Second)
+    }
+    
+    // Application code that might report errors
+    client.Report(ctx, err)
+}
+```
+
+<Note>
+  Always call `Flush()` before your application exits to ensure all error reports are sent to Sentry.
+</Note>

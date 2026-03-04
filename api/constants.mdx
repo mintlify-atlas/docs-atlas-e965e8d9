@@ -1,0 +1,108 @@
+---
+title: "Constants"
+description: "Severity level constants for error reporting and breadcrumbs"
+---
+
+The Sentry Go SDK exports severity level constants that are used when logging breadcrumbs and reporting errors. These constants are re-exported from the official Sentry SDK.
+
+## Severity Levels
+
+Severity levels indicate the importance and urgency of an event or breadcrumb.
+
+### LevelFatal
+
+```go
+const LevelFatal = sentry.LevelFatal
+```
+
+Indicates a fatal error that causes the application to crash or panic. Used automatically when reporting panics.
+
+**Example:**
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelFatal, "system", "Critical system failure")
+```
+
+---
+
+### LevelError
+
+```go
+const LevelError = sentry.LevelError
+```
+
+Indicates an error that should be investigated. This is the default level for errors reported via `Report()`.
+
+**Example:**
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelError, "database", "Database query failed")
+```
+
+---
+
+### LevelWarning
+
+```go
+const LevelWarning = sentry.LevelWarning
+```
+
+Indicates a warning about something that might be problematic but doesn't prevent operation.
+
+**Example:**
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelWarning, "cache", "Cache miss, falling back to database")
+```
+
+---
+
+### LevelInfo
+
+```go
+const LevelInfo = sentry.LevelInfo
+```
+
+Indicates informational messages about normal application flow.
+
+**Example:**
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "User logged in successfully")
+```
+
+---
+
+### LevelDebug
+
+```go
+const LevelDebug = sentry.LevelDebug
+```
+
+Indicates debug-level information useful during development and troubleshooting.
+
+**Example:**
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelDebug, "api", "Request payload validated")
+```
+
+---
+
+## Usage
+
+These constants are primarily used with the `LogBreadcrumb()` function to categorize the severity of breadcrumb events:
+
+```go
+ctx := sentry.WithContext(context.Background())
+
+// Track application flow with different severity levels
+sentry.LogBreadcrumb(ctx, sentry.LevelDebug, "init", "Application starting")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Connected to database")
+sentry.LogBreadcrumb(ctx, sentry.LevelWarning, "cache", "Cache server unreachable")
+
+// If an error occurs, breadcrumbs provide context
+if err := doSomething(); err != nil {
+    sentry.LogBreadcrumb(ctx, sentry.LevelError, "operation", "Operation failed")
+    client.Report(ctx, err)
+}
+```
+
+<Note>
+  When viewing errors in Sentry, breadcrumbs are color-coded by severity level to help you quickly understand the sequence of events leading to an error.
+</Note>

@@ -1,80 +1,297 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with error tracking in your Go application
 ---
 
-## Get started in three steps
+This guide walks you through setting up the Sentry client and reporting your first error.
 
-Get your documentation site running locally and make your first customization.
+## Installation
 
-### Step 1: Set up your local environment
+First, install the library:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash
+go get github.com/altipla-consulting/sentry
+```
 
-### Step 2: Deploy your changes
+## Setup
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Steps>
+  <Step title="Get your Sentry DSN">
+    Log in to your Sentry account and copy your project's DSN from **Settings > Projects > [Your Project] > Client Keys (DSN)**.
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    The DSN looks like:
+    ```
+    https://examplePublicKey@o0.ingest.sentry.io/0
+    ```
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Set environment variables">
+    Store your Sentry DSN in an environment variable:
 
-### Step 3: Go live
+    ```bash
+    export SENTRY_DSN="https://your-dsn@sentry.io/project-id"
+    export VERSION="1.0.0"  # Optional: for release tracking
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    <Note>
+    The `VERSION` environment variable is automatically used by the client to tag errors with your application version.
+    </Note>
+  </Step>
+
+  <Step title="Initialize the client">
+    Create a Sentry client in your application:
+
+    ```go main.go
+    package main
+
+    import (
+        "context"
+        "fmt"
+        "os"
+        "time"
+
+        "github.com/altipla-consulting/sentry"
+    )
+
+    func main() {
+        // Initialize the Sentry client
+        client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+        
+        // Ensure all events are sent before exiting
+        defer client.Flush(5 * time.Second)
+
+        // Your application code here
+        if err := run(); err != nil {
+            client.Report(context.Background(), err)
+        }
+    }
+
+    func run() error {
+        return fmt.Errorf("something went wrong")
+    }
+    ```
+
+    <Info>
+    If the DSN is empty, `NewClient` returns `nil`, and all operations become no-ops. This makes it safe to use in environments where Sentry is not configured.
+    </Info>
+  </Step>
+
+  <Step title="Run your application">
+    Run your application:
+
+    ```bash
+    go run main.go
+    ```
+
+    Check your Sentry dashboard - you should see the error reported!
+  </Step>
+</Steps>
+
+## Report errors with context
+
+For better error tracking, use the context helpers to attach metadata:
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    "time"
+
+    "github.com/altipla-consulting/sentry"
+    sentrygo "github.com/getsentry/sentry-go"
+)
+
+func main() {
+    client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+    defer client.Flush(5 * time.Second)
+
+    // Create a context with Sentry scope
+    ctx := sentry.WithContext(context.Background())
+
+    // Add tags for filtering
+    sentry.Tag(ctx, "environment", "production")
+    sentry.Tag(ctx, "user_id", "12345")
+
+    // Add breadcrumbs to track flow
+    sentry.LogBreadcrumb(ctx, sentrygo.LevelInfo, "app", "Application started")
+    sentry.LogBreadcrumb(ctx, sentrygo.LevelInfo, "database", "Connected to database")
+
+    // Report an error with all context
+    err := processOrder(ctx)
+    if err != nil {
+        client.Report(ctx, err)
+    }
+}
+
+func processOrder(ctx context.Context) error {
+    sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "order", "Processing order")
+    return fmt.Errorf("failed to process order: %w", fmt.Errorf("payment declined"))
+}
+```
+
+## Track HTTP requests
+
+For web applications, use `WithRequest` to automatically capture HTTP request details:
+
+```go
+package main
+
+import (
+    "fmt"
+    "net/http"
+    "os"
+    "time"
+
+    "github.com/altipla-consulting/sentry"
+)
+
+var sentryClient *sentry.Client
+
+func main() {
+    sentryClient = sentry.NewClient(os.Getenv("SENTRY_DSN"))
+    defer sentryClient.Flush(5 * time.Second)
+
+    http.HandleFunc("/", handler)
+    http.ListenAndServe(":8080", nil)
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    // Attach Sentry scope to the request
+    r = sentry.WithRequest(r)
+
+    // Add custom tags
+    sentry.Tag(r.Context(), "endpoint", "/")
+
+    // Handle the request
+    if err := processRequest(r); err != nil {
+        sentryClient.Report(r.Context(), err)
+        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+        return
+    }
+
+    w.Write([]byte("OK"))
+}
+
+func processRequest(r *http.Request) error {
+    return fmt.Errorf("database connection failed")
+}
+```
+
+## Recover from panics
+
+Use `ReportPanics` with defer to catch and report panics:
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+    "time"
+
+    "github.com/altipla-consulting/sentry"
+)
+
+func main() {
+    client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+    defer client.Flush(5 * time.Second)
+
+    ctx := sentry.WithContext(context.Background())
+    defer client.ReportPanics(ctx)
+
+    // This panic will be caught and reported to Sentry
+    panic("unexpected error occurred")
+}
+```
+
+<Warning>
+Always use `defer client.Flush()` before your application exits to ensure all events are sent to Sentry. The recommended timeout is 5 seconds.
+</Warning>
+
+## Complete example
+
+Here's a complete example showing error unwrapping and stack traces:
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    "time"
+
+    "github.com/altipla-consulting/sentry"
+)
+
+func main() {
+    client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+    defer client.Flush(5 * time.Second)
+
+    ctx := sentry.WithContext(context.Background())
+    sentry.Tag(ctx, "module", "order-service")
+
+    // Simulate a complex error chain
+    err := layer1("order-123")
+    if err != nil {
+        client.Report(ctx, err)
+    }
+}
+
+func layer1(orderID string) error {
+    if err := layer2(orderID); err != nil {
+        return fmt.Errorf("layer1 failed for order %s: %w", orderID, err)
+    }
+    return nil
+}
+
+func layer2(orderID string) error {
+    if err := layer3(); err != nil {
+        return fmt.Errorf("layer2 processing: %w", err)
+    }
+    return nil
+}
+
+func layer3() error {
+    return fmt.Errorf("database connection timeout")
+}
+```
+
+This example demonstrates:
+
+- Error wrapping with `fmt.Errorf` and `%w`
+- The library automatically unwraps errors to find the root cause
+- Full stack traces are captured at each layer
+- Tags help filter errors in Sentry
+
+## Available log levels
+
+When logging breadcrumbs, you can use these severity levels:
+
+```go
+sentry.LevelDebug   // Debug information
+sentry.LevelInfo    // Informational messages
+sentry.LevelWarning // Warning messages
+sentry.LevelError   // Error messages
+sentry.LevelFatal   // Fatal errors (used for panics)
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Context helpers" icon="sitemap" href="/api/context-helpers">
+    Learn about `WithContext`, `WithRequest`, and scope management
+  </Card>
+  <Card title="Breadcrumbs" icon="shoe-prints" href="/guides/breadcrumbs-tags">
+    Track application flow with `LogBreadcrumb`
+  </Card>
+  <Card title="Error reporting" icon="triangle-exclamation" href="/guides/error-reporting">
+    Deep dive into error reporting patterns
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/client">
+    Complete API documentation for all methods
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

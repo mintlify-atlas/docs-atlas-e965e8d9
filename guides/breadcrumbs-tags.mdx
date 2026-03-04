@@ -1,0 +1,412 @@
+---
+title: Breadcrumbs and tags
+description: Learn how to use breadcrumbs to track user actions and tags to categorize errors in Sentry
+---
+
+Breadcrumbs and tags help you understand the context around errors. Breadcrumbs create a timeline of events leading up to an error, while tags let you categorize and filter errors in your Sentry dashboard.
+
+## Logging breadcrumbs
+
+Use `LogBreadcrumb()` to record important events in your application:
+
+```go
+package main
+
+import (
+	"context"
+	"time"
+	
+	"github.com/altipla-consulting/sentry"
+)
+
+func processOrder(ctx context.Context, orderID string) error {
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "order", "Starting order processing")
+	
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "validation", "Validating order items")
+	if err := validateOrder(orderID); err != nil {
+		sentry.LogBreadcrumb(ctx, sentry.LevelError, "validation", "Order validation failed")
+		return err
+	}
+	
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "payment", "Processing payment")
+	if err := processPayment(orderID); err != nil {
+		sentry.LogBreadcrumb(ctx, sentry.LevelError, "payment", "Payment processing failed")
+		return err
+	}
+	
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "order", "Order completed successfully")
+	return nil
+}
+```
+
+<Note>
+Breadcrumbs are stored in the context and automatically included when you report an error. Up to 500 breadcrumbs are kept per context.
+</Note>
+
+## Breadcrumb parameters
+
+The `LogBreadcrumb()` function takes four parameters:
+
+1. **Context**: The context containing the Sentry scope
+2. **Level**: The severity level (Debug, Info, Warning, Error, Fatal)
+3. **Category**: A string to group related breadcrumbs (e.g., "database", "auth", "api")
+4. **Message**: A descriptive message about what happened
+
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Connecting to user database")
+```
+
+## Breadcrumb levels
+
+Use appropriate levels to indicate the importance of events:
+
+```go
+// Detailed debugging information
+sentry.LogBreadcrumb(ctx, sentry.LevelDebug, "cache", "Cache miss for key: user:123")
+
+// General informational messages
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "api", "Fetching user profile")
+
+// Warning about potential issues
+sentry.LogBreadcrumb(ctx, sentry.LevelWarning, "rate-limit", "Approaching rate limit threshold")
+
+// Error conditions
+sentry.LogBreadcrumb(ctx, sentry.LevelError, "database", "Query timeout after 30s")
+
+// Fatal errors
+sentry.LogBreadcrumb(ctx, sentry.LevelFatal, "system", "Out of memory")
+```
+
+Available levels:
+- `sentry.LevelDebug`
+- `sentry.LevelInfo`
+- `sentry.LevelWarning`
+- `sentry.LevelError`
+- `sentry.LevelFatal`
+
+## Breadcrumb categories
+
+Organize breadcrumbs by category to make timelines easier to understand:
+
+<Tabs>
+  <Tab title="Authentication">
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "User login attempt")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "Verifying credentials")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "Generating session token")
+```
+  </Tab>
+  
+  <Tab title="Database">
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Opening connection pool")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Executing query: SELECT * FROM users")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Query returned 42 rows")
+```
+  </Tab>
+  
+  <Tab title="API calls">
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "api", "Calling payment gateway API")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "api", "Received response: 200 OK")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "api", "Parsing payment response")
+```
+  </Tab>
+  
+  <Tab title="Business logic">
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "business", "Calculating order total")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "business", "Applying discount code")
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "business", "Updating inventory")
+```
+  </Tab>
+</Tabs>
+
+## Adding tags
+
+Use `Tag()` to add metadata that helps you filter and search errors:
+
+```go
+func handleRequest(ctx context.Context, userID, environment string) {
+	// Add tags to categorize this request
+	sentry.Tag(ctx, "user_id", userID)
+	sentry.Tag(ctx, "environment", environment)
+	sentry.Tag(ctx, "feature_flag", "new_checkout")
+	
+	// Process request...
+}
+```
+
+Tags appear in your Sentry dashboard and can be used to filter issues:
+- Find all errors for a specific user
+- Compare error rates across environments
+- Track errors related to specific features
+
+## Tag naming conventions
+
+Use consistent, descriptive tag names:
+
+```go
+// Good: Clear, consistent naming
+sentry.Tag(ctx, "user_id", "12345")
+sentry.Tag(ctx, "tenant_id", "acme-corp")
+sentry.Tag(ctx, "api_version", "v2")
+sentry.Tag(ctx, "payment_method", "credit_card")
+
+// Avoid: Inconsistent or vague names
+sentry.Tag(ctx, "user", "12345")           // Use "user_id" instead
+sentry.Tag(ctx, "apiVersion", "v2")        // Use snake_case
+sentry.Tag(ctx, "x", "value")              // Not descriptive
+```
+
+<Info>
+Tag values are strings. Convert other types before passing them to `Tag()`.
+</Info>
+
+## Tracking user actions
+
+Combine breadcrumbs and tags to track complete user journeys:
+
+```go
+func checkoutFlow(ctx context.Context, client *sentry.Client, user User, cart Cart) error {
+	// Tag the request with user info
+	sentry.Tag(ctx, "user_id", user.ID)
+	sentry.Tag(ctx, "cart_size", fmt.Sprintf("%d", len(cart.Items)))
+	
+	// Track each step of the checkout
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "checkout", "User entered checkout")
+	
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "checkout", "Validating cart items")
+	if err := validateCart(ctx, cart); err != nil {
+		sentry.LogBreadcrumb(ctx, sentry.LevelError, "checkout", "Cart validation failed")
+		client.Report(ctx, err)
+		return err
+	}
+	
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "checkout", "Calculating shipping")
+	shipping, err := calculateShipping(ctx, cart)
+	if err != nil {
+		sentry.LogBreadcrumb(ctx, sentry.LevelError, "checkout", "Shipping calculation failed")
+		client.Report(ctx, err)
+		return err
+	}
+	sentry.Tag(ctx, "shipping_method", shipping.Method)
+	
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "checkout", "Processing payment")
+	if err := processPayment(ctx, cart.Total+shipping.Cost); err != nil {
+		sentry.LogBreadcrumb(ctx, sentry.LevelError, "checkout", "Payment failed")
+		client.Report(ctx, err)
+		return err
+	}
+	
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "checkout", "Checkout completed successfully")
+	return nil
+}
+```
+
+When an error occurs, Sentry shows the complete timeline of breadcrumbs plus all tags, making it easy to reproduce the issue.
+
+## Breadcrumbs with HTTP requests
+
+Combine breadcrumbs with HTTP request tracking:
+
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r = sentry.WithRequest(r)
+		ctx := r.Context()
+		
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "request", "Request received")
+		sentry.Tag(ctx, "endpoint", r.URL.Path)
+		
+		userID := authenticate(r)
+		if userID == "" {
+			sentry.LogBreadcrumb(ctx, sentry.LevelWarning, "auth", "Authentication failed")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "User authenticated")
+		sentry.Tag(ctx, "user_id", userID)
+		
+		processRequest(ctx, client, w, r)
+	}
+}
+```
+
+## Conditional breadcrumbs
+
+Add breadcrumbs only when relevant:
+
+```go
+func processRequest(ctx context.Context, enableDebug bool) error {
+	if enableDebug {
+		sentry.LogBreadcrumb(ctx, sentry.LevelDebug, "debug", "Debug mode enabled")
+	}
+	
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "process", "Starting request processing")
+	
+	// Processing logic...
+	
+	return nil
+}
+```
+
+## Breadcrumb limits
+
+From the source code (context.go:49), breadcrumbs are limited to 500 per scope:
+
+```go
+scope.AddBreadcrumb(&sentry.Breadcrumb{
+	Timestamp: time.Now(),
+	Type:      "default",
+	Message:   message,
+	Category:  category,
+	Level:     level,
+}, 500)
+```
+
+When the limit is reached, older breadcrumbs are automatically removed.
+
+<Warning>
+Don't log breadcrumbs in tight loops or high-frequency operations, as you'll quickly hit the 500 breadcrumb limit.
+</Warning>
+
+## Nil context handling
+
+Both `LogBreadcrumb()` and `Tag()` safely handle contexts without Sentry scope:
+
+```go
+// Context without Sentry scope
+ctx := context.Background()
+
+// These calls do nothing but don't panic
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "test", "This won't be recorded")
+sentry.Tag(ctx, "key", "value")
+```
+
+This allows you to write code that works regardless of whether Sentry is initialized.
+
+## Best practices
+
+<Steps>
+
+<Step title="Use descriptive messages">
+Write breadcrumb messages that clearly describe what happened:
+
+```go
+// Good: Clear and specific
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Connecting to PostgreSQL on localhost:5432")
+
+// Bad: Too vague
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "db", "Connecting")
+```
+</Step>
+
+<Step title="Add breadcrumbs before operations">
+Log breadcrumbs before attempting operations, not just on failure:
+
+```go
+// Good: Timeline shows what was attempted
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "api", "Calling external payment API")
+if err := callPaymentAPI(); err != nil {
+	sentry.LogBreadcrumb(ctx, sentry.LevelError, "api", "Payment API call failed")
+	return err
+}
+
+// Less useful: Only logs on failure
+if err := callPaymentAPI(); err != nil {
+	sentry.LogBreadcrumb(ctx, sentry.LevelError, "api", "Payment API call failed")
+	return err
+}
+```
+</Step>
+
+<Step title="Use consistent categories">
+Define standard categories for your application:
+
+```go
+const (
+	BreadcrumbCategoryAuth     = "auth"
+	BreadcrumbCategoryDatabase = "database"
+	BreadcrumbCategoryAPI      = "api"
+	BreadcrumbCategoryBusiness = "business"
+)
+
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, BreadcrumbCategoryAuth, "User login")
+```
+</Step>
+
+<Step title="Tag early in request lifecycle">
+Add tags as soon as you have the information:
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+	r = sentry.WithRequest(r)
+	ctx := r.Context()
+	
+	// Tag immediately
+	sentry.Tag(ctx, "endpoint", r.URL.Path)
+	
+	// More processing...
+}
+```
+</Step>
+
+</Steps>
+
+## Example: Complete request tracking
+
+Here's a complete example combining breadcrumbs, tags, and error reporting:
+
+```go
+func handleUserUpdate(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r = sentry.WithRequest(r)
+		defer client.ReportPanics(r.Context())
+		ctx := r.Context()
+		
+		// Initial tags
+		sentry.Tag(ctx, "endpoint", "/users/update")
+		sentry.Tag(ctx, "method", r.Method)
+		
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "request", "User update request received")
+		
+		// Authentication
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "Authenticating user")
+		user, err := authenticate(r)
+		if err != nil {
+			sentry.LogBreadcrumb(ctx, sentry.LevelError, "auth", "Authentication failed")
+			client.Report(ctx, err)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		sentry.Tag(ctx, "user_id", user.ID)
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", fmt.Sprintf("User %s authenticated", user.ID))
+		
+		// Parse request
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "validation", "Parsing request body")
+		var updateData UserUpdate
+		if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+			sentry.LogBreadcrumb(ctx, sentry.LevelError, "validation", "Failed to parse request body")
+			client.Report(ctx, err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		
+		// Update database
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Updating user record")
+		if err := updateUser(ctx, user.ID, updateData); err != nil {
+			sentry.LogBreadcrumb(ctx, sentry.LevelError, "database", "Failed to update user")
+			client.Report(ctx, err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "response", "User updated successfully")
+		w.WriteHeader(http.StatusOK)
+	}
+}
+```
+
+This pattern ensures comprehensive tracking of every request, making debugging much easier when errors occur.

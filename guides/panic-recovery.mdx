@@ -1,0 +1,230 @@
+---
+title: Panic recovery
+description: Learn how to recover from panics and report them to Sentry with stack traces
+---
+
+Go panics can crash your application if not handled properly. The Sentry Go SDK provides methods to catch panics and report them to Sentry before your application exits.
+
+## Using ReportPanics
+
+The `ReportPanics()` method is the recommended way to catch and report panics. Use it with `defer` at the beginning of your function:
+
+```go
+package main
+
+import (
+	"context"
+	"time"
+
+	"github.com/altipla-consulting/sentry"
+)
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	defer client.ReportPanics(context.Background())
+
+	// This panic will be caught and reported
+	panic("something went wrong")
+}
+```
+
+<Note>
+`ReportPanics()` internally calls `recover()` to catch the panic. It must be deferred at the beginning of your function to work correctly.
+</Note>
+
+## Defer patterns
+
+<Steps>
+
+<Step title="Flush before panic recovery">
+Always defer `Flush()` before `ReportPanics()`. This ensures panic events are sent to Sentry:
+
+```go
+defer client.Flush(5 * time.Second)
+defer client.ReportPanics(context.Background())
+```
+</Step>
+
+<Step title="Use in goroutines">
+Each goroutine needs its own panic recovery:
+
+```go
+go func() {
+	defer client.ReportPanics(context.Background())
+	
+	// Work that might panic
+	processTask()
+}()
+```
+</Step>
+
+<Step title="Preserve context">
+Pass the same context to both your work and panic recovery:
+
+```go
+func handleRequest(ctx context.Context, client *sentry.Client) {
+	defer client.ReportPanics(ctx)
+	
+	// Context-aware work
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "request", "Processing request")
+	processRequest(ctx)
+}
+```
+</Step>
+
+</Steps>
+
+## Manual panic reporting
+
+For more control, use `ReportPanic()` to manually report a recovered panic:
+
+```go
+func safeOperation(client *sentry.Client) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			// Custom logic before reporting
+			log.Printf("Recovered from panic: %v", rec)
+			
+			client.ReportPanic(context.Background(), rec)
+			
+			// Additional cleanup
+			cleanupResources()
+		}
+	}()
+	
+	// Work that might panic
+	dangerousOperation()
+}
+```
+
+<Warning>
+When using `ReportPanic()` manually, you must call `recover()` yourself. If you pass nil, nothing is reported.
+</Warning>
+
+## Stack traces
+
+The SDK automatically captures full stack traces for panics using `debug.Stack()`:
+
+```go
+func nestedFunction() {
+	panic("deep panic")
+}
+
+func middleFunction() {
+	nestedFunction()
+}
+
+func topFunction() {
+	middleFunction()
+}
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	defer client.ReportPanics(context.Background())
+
+	topFunction()
+}
+```
+
+The stack trace in Sentry will show the complete call chain: `topFunction` → `middleFunction` → `nestedFunction`, making it easy to identify where the panic originated.
+
+## Panic formatting
+
+Panics are formatted with a "panic: " prefix and the full stack trace:
+
+```go
+// Internal implementation (from client.go:102)
+fmt.Errorf("panic: %v", panicErr)
+```
+
+The panic value is converted to a string and included in both the error message and the exception value sent to Sentry.
+
+## Error levels
+
+<Info>
+Panics are reported with `sentry.LevelFatal`, the highest severity level. This helps you identify critical issues that could crash your application.
+</Info>
+
+Regular errors use `sentry.LevelError`, while panics use `sentry.LevelFatal` to distinguish them in your Sentry dashboard.
+
+## HTTP request panics
+
+When handling HTTP requests, you can attach request information before recovering from panics:
+
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Attach request to context
+		r = sentry.WithRequest(r)
+		defer client.ReportPanics(r.Context())
+		
+		// Handler logic that might panic
+		processRequest(w, r)
+	}
+}
+```
+
+The panic report will include full HTTP request details like URL, method, headers, and user IP.
+
+## Testing panic recovery
+
+You can test panic recovery in your test suite:
+
+```go
+func TestReportPanic(t *testing.T) {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+	defer client.ReportPanics(context.Background())
+
+	panic("test panic")
+}
+```
+
+<Note>
+Tests with panics will still fail after reporting to Sentry, as the panic is not suppressed.
+</Note>
+
+## Ignoring specific panics
+
+With manual panic reporting, you can choose which panics to report:
+
+```go
+func selectiveReporting(client *sentry.Client) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			// Ignore HTTP abort errors
+			if rec == http.ErrAbortHandler {
+				return
+			}
+			
+			// Report everything else
+			client.ReportPanic(context.Background(), rec)
+		}
+	}()
+	
+	dangerousOperation()
+}
+```
+
+This pattern is useful for filtering out expected panics that shouldn't be reported.
+
+## Deprecated request methods
+
+<Warning>
+The `ReportPanicsRequest()` method is deprecated. Use `ReportPanics()` after calling `WithRequest()` instead.
+</Warning>
+
+Old pattern (deprecated):
+```go
+defer client.ReportPanicsRequest(r)
+```
+
+New pattern (recommended):
+```go
+r = sentry.WithRequest(r)
+defer client.ReportPanics(r.Context())
+```
+
+The new pattern is more flexible and works consistently with other context-based features.

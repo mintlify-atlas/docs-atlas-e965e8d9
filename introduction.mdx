@@ -1,0 +1,92 @@
+---
+title: Introduction
+description: A Go library that wraps the official Sentry SDK with additional functionality and helpers
+---
+
+## What is altipla-consulting/sentry?
+
+The `altipla-consulting/sentry` library is a Go wrapper around the official Sentry SDK that provides enhanced functionality and developer-friendly helpers for error tracking and monitoring in your Go applications.
+
+While the official Sentry SDK provides the core functionality for error reporting, this library adds:
+
+- Simplified client initialization with automatic configuration
+- Context-aware error reporting with scope management
+- Automatic HTTP request tracking
+- Breadcrumb logging helpers
+- Tag management utilities
+- Panic recovery and reporting
+- Goroutine-safe error reporting with proper flushing
+
+## Why use this library?
+
+The official Sentry SDK is powerful but can be verbose and complex to configure correctly. This library provides:
+
+### Simpler API
+
+You can create a client and report errors with minimal boilerplate:
+
+```go
+client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+defer client.Flush(5 * time.Second)
+
+client.Report(ctx, err)
+```
+
+### Context-first design
+
+The library is built around Go's `context.Context` pattern, making it easy to:
+
+- Store scope information in your request context
+- Track HTTP requests automatically
+- Add breadcrumbs throughout your application flow
+- Tag errors with contextual metadata
+
+### Nil-safe operations
+
+If you create a client with an empty DSN, the library returns `nil` and all operations become no-ops. This means you can safely use the client without checking for nil in your code:
+
+```go
+client := sentry.NewClient("") // Returns nil
+client.Report(ctx, err)        // Safe, does nothing
+```
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Error reporting" icon="bug">
+    Report errors with full stack traces and automatic error unwrapping
+  </Card>
+  <Card title="Panic recovery" icon="shield-halved">
+    Catch and report panics with proper stack traces
+  </Card>
+  <Card title="Context management" icon="sitemap">
+    Store Sentry scopes in context for request-scoped error tracking
+  </Card>
+  <Card title="Breadcrumbs" icon="shoe-prints">
+    Track application flow with breadcrumb logging
+  </Card>
+</CardGroup>
+
+## How it works
+
+The library wraps the official Sentry SDK (`github.com/getsentry/sentry-go`) and provides:
+
+1. **Client wrapper** - A `Client` type that manages the Sentry connection and handles goroutine-safe reporting
+2. **Context helpers** - Functions to store and retrieve Sentry scopes from `context.Context`
+3. **Automatic configuration** - Reads the `VERSION` environment variable for release tracking
+4. **Smart error handling** - Unwraps errors to find the root cause while preserving the full error chain
+
+<Note>
+This library requires Go 1.24.0 or later and depends on `github.com/getsentry/sentry-go` v0.40.0.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the library in your project
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started with your first error report
+  </Card>
+</CardGroup>

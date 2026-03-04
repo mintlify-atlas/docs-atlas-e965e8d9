@@ -1,0 +1,212 @@
+---
+title: "Context Helpers"
+description: "Functions for managing Sentry context, breadcrumbs, and tags"
+---
+
+Context helper functions enable you to attach metadata, breadcrumbs, and request information to error reports. The context must be initialized with `WithContext()` or `WithRequest()` before using other helper functions.
+
+## WithContext
+
+Creates a new Sentry scope and stores it in the context.
+
+### Signature
+
+```go
+func WithContext(ctx context.Context) context.Context
+```
+
+### Parameters
+
+<ParamField path="ctx" type="context.Context" required>
+  The parent context to derive from.
+</ParamField>
+
+### Returns
+
+Returns a new context with a Sentry scope attached. This context should be passed to all subsequent operations.
+
+### Example
+
+```go
+import (
+    "context"
+    "github.com/altipla-consulting/sentry"
+)
+
+func processRequest() {
+    ctx := sentry.WithContext(context.Background())
+    
+    // Add metadata to the context
+    sentry.Tag(ctx, "environment", "production")
+    sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "process", "Starting request")
+    
+    // Use the context in operations that might error
+    if err := doWork(ctx); err != nil {
+        client.Report(ctx, err)
+    }
+}
+```
+
+<Note>
+  Always use the returned context for all subsequent operations to ensure Sentry data is preserved.
+</Note>
+
+---
+
+## WithRequest
+
+Creates a new Sentry scope with HTTP request information and stores it in the request context.
+
+### Signature
+
+```go
+func WithRequest(r *http.Request) *http.Request
+```
+
+### Parameters
+
+<ParamField path="r" type="*http.Request" required>
+  The HTTP request to attach to the Sentry scope.
+</ParamField>
+
+### Returns
+
+Returns a new `*http.Request` with a Sentry scope attached to its context. The scope includes the full request information (URL, headers, method, etc.).
+
+### Example
+
+```go
+import (
+    "net/http"
+    "github.com/altipla-consulting/sentry"
+)
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    r = sentry.WithRequest(r)
+    defer client.ReportPanics(r.Context())
+    
+    // Add tags and breadcrumbs
+    sentry.Tag(r.Context(), "user_id", getUserID(r))
+    sentry.LogBreadcrumb(r.Context(), sentry.LevelInfo, "auth", "User authenticated")
+    
+    // Handle request
+    if err := processRequest(r); err != nil {
+        client.Report(r.Context(), err)
+        http.Error(w, "Internal error", http.StatusInternalServerError)
+        return
+    }
+}
+```
+
+<Note>
+  This function automatically captures request details including URL, method, headers, and query parameters for error reports.
+</Note>
+
+---
+
+## LogBreadcrumb
+
+Adds a breadcrumb to the Sentry scope in the context. Breadcrumbs are a trail of events that happened before an error.
+
+### Signature
+
+```go
+func LogBreadcrumb(ctx context.Context, level sentry.Level, category, message string)
+```
+
+### Parameters
+
+<ParamField path="ctx" type="context.Context" required>
+  The context containing the Sentry scope. Must be initialized with `WithContext()` or `WithRequest()`.
+</ParamField>
+
+<ParamField path="level" type="sentry.Level" required>
+  The severity level of the breadcrumb. Use constants like `LevelInfo`, `LevelWarning`, `LevelError`, `LevelDebug`, or `LevelFatal`.
+</ParamField>
+
+<ParamField path="category" type="string" required>
+  The category of the breadcrumb (e.g., "auth", "database", "http", "ui").
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  A descriptive message for the breadcrumb.
+</ParamField>
+
+### Returns
+
+No return value. If the context doesn't have a Sentry scope, the function does nothing.
+
+### Example
+
+```go
+func processOrder(ctx context.Context, orderID string) error {
+    sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "order", "Starting order processing")
+    
+    user, err := fetchUser(ctx)
+    if err != nil {
+        return err
+    }
+    sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "user", "User data fetched")
+    
+    if err := validateOrder(ctx, orderID); err != nil {
+        sentry.LogBreadcrumb(ctx, sentry.LevelWarning, "validation", "Order validation failed")
+        return err
+    }
+    
+    sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "order", "Order processed successfully")
+    return nil
+}
+```
+
+<Note>
+  Breadcrumbs are limited to the last 500 entries. Use them to track important events that provide context for errors.
+</Note>
+
+---
+
+## Tag
+
+Adds a tag (key-value pair) to the Sentry scope in the context. Tags are indexed and searchable in Sentry.
+
+### Signature
+
+```go
+func Tag(ctx context.Context, key string, value string)
+```
+
+### Parameters
+
+<ParamField path="ctx" type="context.Context" required>
+  The context containing the Sentry scope. Must be initialized with `WithContext()` or `WithRequest()`.
+</ParamField>
+
+<ParamField path="key" type="string" required>
+  The tag key/name (e.g., "user_id", "environment", "version").
+</ParamField>
+
+<ParamField path="value" type="string" required>
+  The tag value.
+</ParamField>
+
+### Returns
+
+No return value. If the context doesn't have a Sentry scope, the function does nothing.
+
+### Example
+
+```go
+func authenticateUser(ctx context.Context, userID, role string) {
+    sentry.Tag(ctx, "user_id", userID)
+    sentry.Tag(ctx, "role", role)
+    sentry.Tag(ctx, "environment", os.Getenv("ENV"))
+    
+    if err := checkPermissions(userID); err != nil {
+        client.Report(ctx, err)
+        return
+    }
+}
+```
+
+<Note>
+  Tags are useful for filtering and grouping errors in Sentry. Common tags include user IDs, environments, versions, and feature flags.
+</Note>

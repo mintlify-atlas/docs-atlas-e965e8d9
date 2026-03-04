@@ -1,0 +1,202 @@
+---
+title: Error reporting
+description: Learn how to report errors to Sentry with context enrichment and error unwrapping
+---
+
+The Sentry Go SDK provides powerful error reporting capabilities that automatically unwrap nested errors and capture stack traces. This guide shows you how to report errors effectively.
+
+## Basic error reporting
+
+Use the `Report()` method to send errors to Sentry:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/altipla-consulting/sentry"
+)
+
+func main() {
+	client := sentry.NewClient("your-dsn-here")
+	defer client.Flush(5 * time.Second)
+
+	if err := processData(); err != nil {
+		client.Report(context.Background(), err)
+	}
+}
+
+func processData() error {
+	return fmt.Errorf("failed to process data")
+}
+```
+
+<Note>
+The `Report()` method requires a context as the first parameter. This allows you to enrich errors with context-specific information like breadcrumbs and tags.
+</Note>
+
+## Error unwrapping
+
+The SDK automatically unwraps nested errors to find the root cause. This is particularly useful when working with wrapped errors:
+
+```go
+func foo(msg string) error {
+	return fmt.Errorf("foo function: %w", bar(msg))
+}
+
+func bar(msg string) error {
+	return fmt.Errorf("bar function: %w", baz(msg))
+}
+
+func baz(msg string) error {
+	return fmt.Errorf("baz function: %s", msg)
+}
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+
+	// The entire error chain is captured
+	client.Report(context.Background(), foo("something went wrong"))
+}
+```
+
+The SDK uses `errors.Unwrap()` to traverse the error chain and identifies the root cause for better error grouping in Sentry.
+
+## Custom error types
+
+You can report custom error types that implement the `error` interface:
+
+```go
+type CustomErr struct {
+	Message string
+}
+
+func (e CustomErr) Error() string {
+	return "custom error: " + e.Message
+}
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+
+	client.Report(context.Background(), CustomErr{Message: "operation failed"})
+}
+```
+
+The SDK uses reflection to determine the error type and reports it accurately to Sentry.
+
+## Context enrichment
+
+<Steps>
+
+<Step title="Initialize context">
+Create a Sentry-aware context using `WithContext()`:
+
+```go
+ctx := sentry.WithContext(context.Background())
+```
+</Step>
+
+<Step title="Add breadcrumbs and tags">
+Enrich the context with additional information:
+
+```go
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Connecting to database")
+sentry.Tag(ctx, "user_id", "12345")
+sentry.Tag(ctx, "environment", "production")
+```
+</Step>
+
+<Step title="Report the error">
+When you report an error, all context information is included:
+
+```go
+if err := queryDatabase(ctx); err != nil {
+	client.Report(ctx, err)
+}
+```
+</Step>
+
+</Steps>
+
+All breadcrumbs and tags attached to the context are automatically sent with the error report.
+
+## Stack traces
+
+The SDK automatically captures stack traces for errors. The stack trace shows the exact location where the error occurred:
+
+```go
+func wrapper1() error {
+	return fmt.Errorf("wrapper1: %w", wrapper2())
+}
+
+func wrapper2() error {
+	if err := wrapper3(); err != nil {
+		return fmt.Errorf("wrapper2: %w", err)
+	}
+	return nil
+}
+
+func wrapper3() error {
+	return fmt.Errorf("wrapper3: new formatted error")
+}
+
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+
+	client.Report(context.Background(), wrapper1())
+}
+```
+
+Sentry uses `sentry.ExtractStacktrace()` to capture the full call stack, making it easy to trace errors back to their source.
+
+## Flushing events
+
+<Warning>
+Always call `Flush()` before your application exits to ensure all events are sent to Sentry.
+</Warning>
+
+The `Flush()` method waits for pending events to be sent:
+
+```go
+func main() {
+	client := sentry.NewClient(os.Getenv("SENTRY_DSN"))
+	defer client.Flush(5 * time.Second)
+
+	// Report errors...
+}
+```
+
+The timeout parameter specifies how long to wait for events to be sent. A timeout of 5 seconds is typically sufficient.
+
+## Nil client safety
+
+<Info>
+If you create a client with an empty DSN, the SDK returns a nil client that can be used safely without reporting anything. This is useful for development environments.
+</Info>
+
+```go
+// Empty DSN returns nil client
+client := sentry.NewClient("")
+
+// Safe to call - does nothing
+client.Report(context.Background(), errors.New("test"))
+```
+
+This allows you to use the same code in development and production without conditional checks.
+
+## Error levels
+
+All errors reported via `Report()` are sent with `sentry.LevelError`. For different severity levels, see the panic recovery guide.
+
+Available levels:
+- `sentry.LevelDebug`
+- `sentry.LevelInfo`
+- `sentry.LevelWarning`
+- `sentry.LevelError`
+- `sentry.LevelFatal`

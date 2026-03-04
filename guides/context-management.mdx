@@ -1,0 +1,280 @@
+---
+title: Context management
+description: Learn how to use contexts to store and propagate Sentry scope across your application
+---
+
+The Sentry Go SDK uses Go's context package to store and propagate error reporting scope throughout your application. This allows you to attach metadata that automatically gets included in error reports.
+
+## Creating a Sentry context
+
+Use `WithContext()` to create a new context with Sentry scope:
+
+```go
+package main
+
+import (
+	"context"
+	
+	"github.com/altipla-consulting/sentry"
+)
+
+func main() {
+	// Create a Sentry-aware context
+	ctx := sentry.WithContext(context.Background())
+	
+	// Use this context throughout your application
+	processRequest(ctx)
+}
+```
+
+<Note>
+`WithContext()` creates a new Sentry scope and stores it in the context. This scope is isolated and won't affect other requests or goroutines.
+</Note>
+
+## Storing scope in context
+
+The SDK stores a Sentry scope in the context using a private key. This scope contains:
+
+- Breadcrumbs
+- Tags
+- User information
+- Request data (when using `WithRequest()`)
+
+All of this information is automatically included when you report errors:
+
+```go
+func processRequest(ctx context.Context, client *sentry.Client) {
+	// Add context information
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "auth", "User authenticated")
+	sentry.Tag(ctx, "user_id", "12345")
+	
+	// This error report includes all context information
+	if err := queryDatabase(); err != nil {
+		client.Report(ctx, err)
+	}
+}
+```
+
+## Context propagation
+
+<Steps>
+
+<Step title="Create context at entry point">
+Initialize the Sentry context at your application's entry point:
+
+```go
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := sentry.WithContext(r.Context())
+	
+	processRequest(ctx)
+}
+```
+</Step>
+
+<Step title="Pass context through call chain">
+Pass the context to all functions that might need to report errors:
+
+```go
+func processRequest(ctx context.Context) error {
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "process", "Starting request processing")
+	
+	return fetchData(ctx)
+}
+
+func fetchData(ctx context.Context) error {
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "data", "Fetching data")
+	
+	return queryDatabase(ctx)
+}
+```
+</Step>
+
+<Step title="Report errors with enriched context">
+When an error occurs, all breadcrumbs from the entire call chain are included:
+
+```go
+func queryDatabase(ctx context.Context) error {
+	sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "database", "Querying user table")
+	
+	if err := db.Query(ctx, "SELECT * FROM users"); err != nil {
+		client.Report(ctx, err)
+		return err
+	}
+	
+	return nil
+}
+```
+</Step>
+
+</Steps>
+
+## Scope isolation
+
+Each context has its own isolated scope. This is important for concurrent requests:
+
+```go
+func server(client *sentry.Client) {
+	http.HandleFunc("/endpoint1", func(w http.ResponseWriter, r *http.Request) {
+		ctx := sentry.WithContext(r.Context())
+		sentry.Tag(ctx, "endpoint", "endpoint1")
+		
+		// This tag only affects this request
+		handleEndpoint1(ctx, client)
+	})
+	
+	http.HandleFunc("/endpoint2", func(w http.ResponseWriter, r *http.Request) {
+		ctx := sentry.WithContext(r.Context())
+		sentry.Tag(ctx, "endpoint", "endpoint2")
+		
+		// This tag is independent of endpoint1
+		handleEndpoint2(ctx, client)
+	})
+}
+```
+
+<Info>
+Each call to `WithContext()` creates a new, independent scope. Changes to one scope don't affect others.
+</Info>
+
+## Nil context handling
+
+The SDK gracefully handles contexts without Sentry scope:
+
+```go
+// Context without Sentry scope
+ctx := context.Background()
+
+// These calls do nothing but don't panic
+sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "test", "This won't be recorded")
+sentry.Tag(ctx, "key", "value")
+
+// Error reports work but without enrichment
+client.Report(ctx, errors.New("error"))
+```
+
+If you report an error with a context that doesn't have Sentry scope, a new empty scope is created automatically.
+
+## Working with existing contexts
+
+You can add Sentry scope to any existing context:
+
+```go
+// Context from another source (e.g., database transaction)
+dbCtx := database.BeginTx(context.Background())
+
+// Add Sentry scope
+sentryCtx := sentry.WithContext(dbCtx)
+
+// Now you can add breadcrumbs and tags
+sentry.LogBreadcrumb(sentryCtx, sentry.LevelInfo, "db", "Transaction started")
+```
+
+The Sentry scope is layered on top of the existing context values.
+
+## Goroutine context propagation
+
+<Warning>
+When spawning goroutines, always pass the context explicitly. Go doesn't automatically inherit context in new goroutines.
+</Warning>
+
+```go
+func processAsync(ctx context.Context, client *sentry.Client) {
+	// Add some context
+	sentry.Tag(ctx, "operation", "async-process")
+	
+	go func() {
+		defer client.ReportPanics(ctx) // Use the same context
+		
+		// This goroutine has access to the parent's Sentry scope
+		sentry.LogBreadcrumb(ctx, sentry.LevelInfo, "worker", "Processing in background")
+		
+		if err := doWork(); err != nil {
+			client.Report(ctx, err) // Includes parent's tags and breadcrumbs
+		}
+	}()
+}
+```
+
+## Context lifecycle
+
+The Sentry scope lives as long as the context:
+
+```go
+func requestHandler(w http.ResponseWriter, r *http.Request) {
+	// Scope created here
+	ctx := sentry.WithContext(r.Context())
+	
+	sentry.Tag(ctx, "request_id", generateID())
+	
+	processRequest(ctx) // Scope available throughout the call chain
+	
+	// Scope is eligible for garbage collection when the request completes
+}
+```
+
+Go's garbage collector automatically cleans up scopes when contexts are no longer referenced.
+
+## Best practices
+
+<Steps>
+
+<Step title="Create context early">
+Initialize Sentry context at the earliest point in your application flow:
+
+```go
+func main() {
+	ctx := sentry.WithContext(context.Background())
+	runApplication(ctx)
+}
+```
+</Step>
+
+<Step title="Always pass context">
+Make context the first parameter of all functions that might need to report errors:
+
+```go
+func processData(ctx context.Context, data []byte) error {
+	// Function implementation
+}
+```
+</Step>
+
+<Step title="Don't create multiple scopes">
+Avoid calling `WithContext()` multiple times in the same request flow, as this creates new isolated scopes:
+
+```go
+// Bad: Creates a new scope, losing previous breadcrumbs
+func badPattern(ctx context.Context) {
+	ctx = sentry.WithContext(ctx) // Don't do this
+	sentry.Tag(ctx, "key", "value")
+}
+
+// Good: Reuse the existing context
+func goodPattern(ctx context.Context) {
+	sentry.Tag(ctx, "key", "value")
+}
+```
+</Step>
+
+</Steps>
+
+## Combining with HTTP requests
+
+For HTTP handlers, use `WithRequest()` instead of `WithContext()` to automatically include request information:
+
+```go
+func handler(client *sentry.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Automatically includes HTTP request details
+		r = sentry.WithRequest(r)
+		ctx := r.Context()
+		
+		// Now add custom context
+		sentry.Tag(ctx, "user_id", getUserID(r))
+		
+		processRequest(ctx, client)
+	}
+}
+```
+
+See the HTTP integration guide for more details on request handling.

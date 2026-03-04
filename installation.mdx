@@ -1,0 +1,107 @@
+---
+title: Installation
+description: Install the altipla-consulting/sentry library in your Go project
+---
+
+## Prerequisites
+
+Before installing the library, ensure you have:
+
+- **Go 1.24.0 or later** installed on your system
+- A **Sentry account** and project with a valid DSN (Data Source Name)
+- A Go module initialized in your project (`go.mod` file)
+
+<Note>
+The library requires Go 1.24.0 as specified in its `go.mod`. Make sure your project uses a compatible Go version.
+</Note>
+
+## Install the package
+
+Use `go get` to add the library to your project:
+
+```bash
+go get github.com/altipla-consulting/sentry
+```
+
+This command will:
+
+1. Download the library and its dependencies
+2. Add the package to your `go.mod` file
+3. Update your `go.sum` with the package checksums
+
+## Dependencies
+
+The library automatically installs the following dependencies:
+
+- `github.com/getsentry/sentry-go` v0.40.0 - The official Sentry SDK
+- `golang.org/x/sys` - System-level functionality
+- `golang.org/x/text` - Text processing utilities
+
+You don't need to install these manually.
+
+## Verify installation
+
+To verify the installation was successful, check that the package appears in your `go.mod`:
+
+```bash
+cat go.mod | grep sentry
+```
+
+You should see:
+
+```
+require github.com/altipla-consulting/sentry v0.x.x
+```
+
+You can also verify by creating a simple test file:
+
+```go test-install.go
+package main
+
+import (
+	"fmt"
+
+	"github.com/altipla-consulting/sentry"
+)
+
+func main() {
+	client := sentry.NewClient("") // Empty DSN returns nil client
+	if client == nil {
+		fmt.Println("Sentry library installed successfully!")
+	}
+}
+```
+
+Run it with:
+
+```bash
+go run test-install.go
+```
+
+If you see "Sentry library installed successfully!", the installation is complete.
+
+<Warning>
+Don't commit your Sentry DSN directly in your code. Use environment variables or a configuration management system to store sensitive credentials.
+</Warning>
+
+## Update the package
+
+To update to the latest version of the library:
+
+```bash
+go get -u github.com/altipla-consulting/sentry
+```
+
+Then run:
+
+```bash
+go mod tidy
+```
+
+This removes any unused dependencies and ensures your `go.mod` is clean.
+
+## Next steps
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Learn how to configure and use the library in your application
+</Card>

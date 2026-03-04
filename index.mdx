@@ -1,97 +1,207 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Sentry Go SDK
+description: Enhanced Sentry error reporting for Go applications
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#38484e] via-[#2a3438] to-[#1a2428] py-20">
+  <div className="absolute inset-0 bg-black/40"></div>
+  <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+    <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+          Enhanced Sentry error reporting for Go
+        </h1>
+        <p className="text-lg sm:text-xl text-gray-300 max-w-2xl mb-8">
+          A Go client library that wraps the official Sentry SDK with additional functionality for context-aware error reporting, panic recovery, and seamless HTTP integration.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a 
+            href="/quickstart" 
+            className="inline-flex items-center px-6 py-3 rounded-lg bg-[#74d7ed] text-[#1a2428] font-semibold hover:bg-[#5fc7dd] transition-colors no-underline"
+          >
+            Get Started
+            <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </a>
+          <a 
+            href="/api/client" 
+            className="inline-flex items-center px-6 py-3 rounded-lg border border-white/30 bg-white/10 text-white font-semibold hover:bg-white/20 hover:border-white/50 transition-colors no-underline"
+          >
+            API Reference
+          </a>
+        </div>
+      </div>
+      <div className="hidden lg:block lg:col-span-5">
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#74d7ed]/20 to-transparent blur-3xl"></div>
+          <div className="relative bg-[#1a2428]/80 backdrop-blur-sm border border-[#74d7ed]/30 rounded-2xl p-6 shadow-2xl">
+            <pre className="text-sm text-gray-300"><code>{`package main
 
-Get your documentation site up and running in minutes.
+import (
+    "context"
+    "github.com/altipla-consulting/sentry"
+)
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+func main() {
+    client := sentry.NewClient(dsn)
+    defer client.Flush(5 * time.Second)
+    
+    ctx := sentry.WithContext(context.Background())
+    
+    if err := processData(ctx); err != nil {
+        client.Report(ctx, err)
+    }
+}`}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white mb-4">
+    Quick Start
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get up and running with the Sentry Go SDK in just a few steps.
+  </p>
+  
+  <Steps>
+    <Step title="Install the package">
+      Add the Sentry Go SDK to your project using Go modules:
+      
+      ```bash
+      go get github.com/altipla-consulting/sentry
+      ```
+    </Step>
+    
+    <Step title="Initialize the client">
+      Create a new Sentry client with your DSN:
+      
+      ```go
+      import "github.com/altipla-consulting/sentry"
 
-Design a docs site that looks great and empowers your users.
+      func main() {
+          client := sentry.NewClient("your-sentry-dsn")
+          defer client.Flush(5 * time.Second)
+      }
+      ```
+      
+      <Note>
+        If you pass an empty DSN, the client will be nil but can still be used safely - it simply won't report anything.
+      </Note>
+    </Step>
+    
+    <Step title="Report your first error">
+      Use the client to report errors with context:
+      
+      ```go
+      ctx := sentry.WithContext(context.Background())
+      
+      if err := someOperation(); err != nil {
+          client.Report(ctx, err)
+      }
+      ```
+    </Step>
+  </Steps>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white mb-4">
+    Key Features
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Everything you need for production-ready error reporting in Go.
+  </p>
+  
+  <CardGroup cols={2}>
+    <Card title="Context-Aware Reporting" icon="layer-group" href="/guides/context-management">
+      Store Sentry scope in Go context for automatic request tracking and enriched error reports.
+    </Card>
+    <Card title="Panic Recovery" icon="shield-halved" href="/guides/panic-recovery">
+      Automatically detect and report panics with full stack traces to prevent silent failures.
+    </Card>
+    <Card title="HTTP Integration" icon="globe" href="/guides/http-integration">
+      Seamlessly integrate with HTTP handlers to capture request data and correlate errors.
+    </Card>
+    <Card title="Breadcrumbs & Tags" icon="tags" href="/guides/breadcrumbs-tags">
+      Add breadcrumbs and tags to track user actions and enrich error context.
+    </Card>
+  </CardGroup>
+</div>
 
-## Create beautiful pages
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white mb-4">
+    Explore the Documentation
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Learn how to use every feature of the Sentry Go SDK.
+  </p>
+  
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <a href="/guides/error-reporting" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] overflow-hidden no-underline hover:border-[#74d7ed] dark:hover:border-[#74d7ed] transition-colors">
+      <div className="h-32 bg-gradient-to-br from-[#74d7ed]/20 to-[#38484e]/20 dark:from-[#74d7ed]/10 dark:to-[#38484e]/10 flex items-center justify-center">
+        <svg className="w-16 h-16 text-[#74d7ed]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Error Reporting</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Learn how to report errors with full context, stack traces, and automatic unwrapping.
+        </p>
+        <span className="text-sm font-medium text-[#74d7ed] group-hover:text-[#5fc7dd] inline-flex items-center">
+          Read guide
+          <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </span>
+      </div>
+    </a>
+    
+    <a href="/api/client" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] overflow-hidden no-underline hover:border-[#74d7ed] dark:hover:border-[#74d7ed] transition-colors">
+      <div className="h-32 bg-gradient-to-br from-[#38484e]/20 to-[#74d7ed]/20 dark:from-[#38484e]/10 dark:to-[#74d7ed]/10 flex items-center justify-center">
+        <svg className="w-16 h-16 text-[#74d7ed]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+        </svg>
+      </div>
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">API Reference</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Complete API documentation for the Client, context helpers, and constants.
+        </p>
+        <span className="text-sm font-medium text-[#74d7ed] group-hover:text-[#5fc7dd] inline-flex items-center">
+          Browse API
+          <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </span>
+      </div>
+    </a>
+  </div>
+</div>
 
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-r from-[#38484e] to-[#2a3438] dark:from-[#38484e] dark:to-[#2a3438] p-8 md:p-12 border border-[#74d7ed]/20">
+    <div className="max-w-3xl">
+      <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-4">
+        Ready to improve your error tracking?
+      </h2>
+      <p className="text-base text-gray-300 mb-6">
+        Start using the Sentry Go SDK today and get better visibility into your application's health.
+      </p>
+      <a 
+        href="/installation" 
+        className="inline-flex items-center px-6 py-3 rounded-lg bg-[#74d7ed] text-[#1a2428] font-semibold hover:bg-[#5fc7dd] transition-colors no-underline"
+      >
+        Get Started
+        <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      </a>
+    </div>
+  </div>
+</div>
